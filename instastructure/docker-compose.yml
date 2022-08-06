@@ -1,0 +1,146 @@
+version: '3.8'
+services:
+
+  eureka-server:
+    image: grumpynatasa/dl-service-registry:0.1.0
+    container_name: eureka-server
+    hostname: eureka-server
+    restart: always
+    ports:
+      - "8761:8761"
+    expose: 
+      - "8761"
+    networks:
+      - mynetwork
+    healthcheck:
+      interval: 10s
+      timeout: 60s
+      retries: 8
+      test: ["CMD", "curl", "-f", "http://localhost:8761"]
+      
+  api-gateway-service:
+    image: grumpynatasa/dl-api-gateway-service:0.1.0
+    build:
+      context: .
+    container_name: api-gateway-service
+    hostname: api-gateway-service
+    restart: always
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - mynetwork
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      
+  auth-service:
+    image: test-auth-kafka
+    build:
+      context: .
+    container_name: auth-service
+    hostname: auth-service
+    restart: always
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8082"
+    links:
+      - auth-database
+    networks:
+      - mynetwork
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://auth-database:5432/AuthDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      
+  account-service:
+    image: test-account-kafka
+    build:
+      context: .
+    container_name: account-service
+    hostname: account-service
+    restart: always
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8083:8083"
+    links:
+      - account-database
+    networks:
+      - mynetwork
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://account-database:5432/AccountDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+    networks:
+      - mynetwork
+      
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - mynetwork
+      
+  auth-database:
+    image: postgres:latest
+    container_name: auth-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "AuthDatabase"
+    volumes:
+      - auth_volume:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - mynetwork
+      
+  account-database:
+    image: postgres:latest
+    container_name: account-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "AccountDatabase"
+    volumes:
+      - account_volume:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - mynetwork
+      
+volumes:
+  auth_volume:
+  account_volume:
+  
+networks:
+  mynetwork:
+    driver: bridge
