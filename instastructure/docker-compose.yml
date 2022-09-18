@@ -31,7 +31,7 @@ services:
     logging: *fluent-bit
       
   api-gateway-service:
-    image: api-new
+    image: grumpynatasa/dl-api-gateway:0.1.0
     container_name: api-gateway-service
     hostname: api-gateway-service
     restart: on-failure
@@ -52,7 +52,7 @@ services:
     logging: *fluent-bit
       
   auth-service:
-    image: auth-new-metrics2
+    image: grumpynatasa/dl-auth-service:0.3.0
     container_name: auth-service
     hostname: auth-service
     restart: on-failure
@@ -79,7 +79,7 @@ services:
     logging: *fluent-bit
       
   account-service:
-    image: account-new
+    image: grumpynatasa/dl-account-service:0.3.0
     container_name: account-service
     hostname: account-service
     restart: on-failure
@@ -104,10 +104,69 @@ services:
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
+    
+  post-service:
+    image: grumpynatasa/dl-post-service:0.3.0
+    container_name: post-service
+    hostname: post-service
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8087:8087"
+    links:
+      - post-database
+    networks:
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - post-net
+      - monitoring
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://account-database:5432/PostDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
+    
+  job-offer-service:
+    image: grumpynatasa/dl-job-offer-service:0.2.0
+    container_name: job-offer-service
+    hostname: job-offer-service
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8084:8084"
+    links:
+      - job-offer-database
+    networks:
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - job-offer-net
+      - monitoring
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://account-database:5432/JobOfferDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
     logging: *fluent-bit
       
   logging-service:
-    image: logging-new
+    image: grumpynatasa/dl-logging-service:0.3.0
     container_name: logging-service
     hostname: logging-service
     restart: on-failure
@@ -131,6 +190,65 @@ services:
       spring.data.mongodb.host: "mongo"
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
+    
+  messaging-service:
+    image: grumpynatasa/dl-messaging-service:0.3.0
+    container_name: messaging-service
+    hostname: messaging-service
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8086:8086"
+    links:
+      - messaging-database
+    networks:
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - messaging-net
+      - monitoring
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://account-database:5432/MessagingDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
+    
+  notification-service:
+    image: grumpynatasa/dl-notification-service:0.3.0
+    container_name: notification-service
+    hostname: notification-service
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8094:8094"
+    links:
+      - notification-database
+    networks:
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - notification-net
+      - monitoring
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.datasource.url: "jdbc:postgresql://account-database:5432/NotificationDatabase"
+      spring.datasource.password: admin
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
     logging: *fluent-bit
       
   dislinkt-fe:
@@ -213,7 +331,71 @@ services:
       - account-net
       - monitoring
     logging: *fluent-bit
-      
+    
+  post-database:
+    image: postgres:latest
+    container_name: post-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "PostDatabase"
+    volumes:
+      - post_volume:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - post-net
+      - monitoring
+    logging: *fluent-bit
+    
+  job-offer-database:
+    image: postgres:latest
+    container_name: job-offer-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "JobOfferDatabase"
+    volumes:
+      - job-offer_volume:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks:
+      - job-offer-net
+      - monitoring
+    logging: *fluent-bit
+    
+  messaging-database:
+    image: postgres:latest
+    container_name: messaging-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "MessagingDatabase"
+    volumes:
+      - messaging_volume:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks:
+      - messaging-net
+      - monitoring
+    logging: *fluent-bit
+    
+  notification-database:
+    image: postgres:latest
+    container_name: notification-database
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: "admin"
+      POSTGRES_DB: "NotificationDatabase"
+    volumes:
+      - notification_volume:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+    networks:
+      - notification-net
+      - monitoring
+    logging: *fluent-bit
+    
   mongo:
     image: mongo
     restart: always
@@ -229,6 +411,10 @@ services:
 volumes:
   auth_volume:
   account_volume:
+  post_volume:
+  job-offer-volume:
+  messaging-volume:
+  notification-volume:
   mongo_volume:
   
 networks:
@@ -239,6 +425,14 @@ networks:
   account-net:
     driver: bridge
   logging-net:
+    driver: bridge
+  post-net:
+    driver: bridge
+  job-offer-net:
+    driver: bridge
+  messaging-net:
+    driver: bridge
+  notification-net:
     driver: bridge
   dislinkt-fe-net:
     driver: bridge
