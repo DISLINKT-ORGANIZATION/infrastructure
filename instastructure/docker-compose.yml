@@ -1,47 +1,61 @@
 version: '3.8'
-services:
 
+x-logging: &fluent-bit
+  driver: fluentd
+  options:
+    fluentd-address: ${FLUENT_BIT_ADDRESS}:24224
+    
+services:
   eureka-server:
     image: grumpynatasa/dl-service-registry:0.1.0
     container_name: eureka-server
     hostname: eureka-server
-    restart: always
+    restart: on-failure
+    depends_on:       
+      - kafka
     ports:
       - "8761:8761"
     expose: 
       - "8761"
     networks:
-      - mynetwork
+      - api-gateway-net
+      - auth-net
+      - account-net
+      - logging-net
+      - monitoring
     healthcheck:
       interval: 10s
       timeout: 60s
       retries: 8
       test: ["CMD", "curl", "-f", "http://localhost:8761"]
+    logging: *fluent-bit
       
   api-gateway-service:
-    image: grumpynatasa/dl-api-gateway-service:0.1.0
-    build:
-      context: .
+    image: api-new
     container_name: api-gateway-service
     hostname: api-gateway-service
-    restart: always
+    restart: on-failure
     depends_on:
       eureka-server:
         condition: service_healthy
+    depends_on:       
+      - kafka
     ports:
       - "8081:8081"
     networks:
-      - mynetwork
+      - api-gateway-net
+      - dislinkt-fe-net
+      - kafka-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+    logging: *fluent-bit
       
   auth-service:
-    image: test-auth-kafka
-    build:
-      context: .
+    image: auth-new-metrics2
     container_name: auth-service
     hostname: auth-service
-    restart: always
+    restart: on-failure
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -52,20 +66,23 @@ services:
     links:
       - auth-database
     networks:
-      - mynetwork
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://auth-database:5432/AuthDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
       
   account-service:
-    image: test-account-kafka
-    build:
-      context: .
+    image: account-new
     container_name: account-service
     hostname: account-service
-    restart: always
+    restart: on-failure
     depends_on:
       eureka-server:
         condition: service_healthy
@@ -76,12 +93,64 @@ services:
     links:
       - account-database
     networks:
-      - mynetwork
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - account-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://account-database:5432/AccountDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+    logging: *fluent-bit
+      
+  logging-service:
+    image: logging-new
+    container_name: logging-service
+    hostname: logging-service
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    depends_on:       
+      - kafka
+    ports:
+      - "8085:8085"
+    links:
+      - mongo
+    networks:
+      - api-gateway-net
+      - auth-net
+      - kafka-net
+      - logging-net
+      - monitoring
+    environment:
+      eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+      spring.data.mongodb.host: "mongo"
+      spring.kafka.bootstrap-servers: "kafka:9092"
+      auth-service.address: http://api-gateway-service:8081/auth-service
+    logging: *fluent-bit
+      
+  dislinkt-fe:
+    build:
+      context: ./front 
+      target: execute
+      args:
+        API_URL: "'http://api-gateway-service:8081/'"
+    restart: on-failure
+    depends_on:
+      - api-gateway-service
+    ports:
+      - 5200:8000
+    volumes:
+      - ./front/nginx.conf:/etc/nginx/nginx.conf
+      - ./front/api_gateway.conf:/etc/nginx/agi_gateway.conf
+    networks:
+      - dislinkt-fe-net
+      - monitoring
+    logging: *fluent-bit
       
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -91,7 +160,9 @@ services:
     ports:
       - 22181:2181
     networks:
-      - mynetwork
+      - kafka-net
+      - monitoring
+    logging: *fluent-bit
       
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -107,7 +178,9 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
-      - mynetwork
+      - kafka-net
+      - monitoring
+    logging: *fluent-bit
       
   auth-database:
     image: postgres:latest
@@ -121,7 +194,9 @@ services:
     ports:
       - "5433:5432"
     networks:
-      - mynetwork
+      - auth-net
+      - monitoring
+    logging: *fluent-bit
       
   account-database:
     image: postgres:latest
@@ -135,12 +210,39 @@ services:
     ports:
       - "5434:5432"
     networks:
-      - mynetwork
+      - account-net
+      - monitoring
+    logging: *fluent-bit
+      
+  mongo:
+    image: mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_volume:/data/db
+    networks:
+      - logging-net
+      - monitoring
+    logging: *fluent-bit
       
 volumes:
   auth_volume:
   account_volume:
+  mongo_volume:
   
 networks:
-  mynetwork:
+  api-gateway-net:
     driver: bridge
+  auth-net:
+    driver: bridge
+  account-net:
+    driver: bridge
+  logging-net:
+    driver: bridge
+  dislinkt-fe-net:
+    driver: bridge
+  kafka-net:
+    driver: bridge
+  monitoring:
+    external: true
