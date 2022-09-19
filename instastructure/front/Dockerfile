@@ -1,9 +1,8 @@
-
 FROM node:alpine3.11 as build
-ARG API_URL="'http://localhost:8090/'"
+ARG API_URL="'/api-gateway/'"
 
-ARG FRONTEND_APP_SRC_URL=https://github.com/DISLINKT-ORGANIZATION/dislinkt-fe/archive/refs/tags/v0.2.0.tar.gz
-	
+ARG FRONTEND_APP_SRC_URL=https://github.com/DISLINKT-ORGANIZATION/dislinkt-fe/archive/refs/tags/v0.5.0.tar.gz
+
 WORKDIR /usr/src/server
 RUN apk --update --no-cache add curl tar && \
     curl -L "${FRONTEND_APP_SRC_URL}" | tar -xz && \
@@ -11,7 +10,7 @@ RUN apk --update --no-cache add curl tar && \
 	cd app && \
     npm install && \
 	echo "$API_URL" && \
-	sed -i -e "s~.*~VUE_APP_API_URL=${API_URL}~g" .env && \	
+	sed -i -e "s~.*~VUE_APP_API_URL=${API_URL}~g" .env && \
 	head -1 .env && \
 	npm install @vue/cli@4.5.14 -g && \
     npm run build --production && \
@@ -24,7 +23,9 @@ RUN apk --update --no-cache add curl tar && \
 FROM nginx:1.21-alpine as execute
 COPY ./nginx.conf /etc/nginx/nginx.conf
 COPY ./api_gateway.conf /etc/nginx/api_gateway.conf
-COPY --from=build /app /usr/share/nginx/html/app
+COPY ./messaging_socket.conf /etc/nginx/messaging_socket.conf
+#COPY --from=build /app /usr/share/nginx/html/app
+COPY ./dist /usr/share/nginx/html/app
 RUN cd /usr/share/nginx/html/app && \
 	ls -a && \
 	echo "$API_URL"
