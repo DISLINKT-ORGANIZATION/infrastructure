@@ -1,3 +1,8 @@
+x-logging: &fluent-bit
+  driver: fluentd
+  options:
+    fluentd-address: ${FLUENT_BIT_ADDRESS}:24224
+
 services:
   eureka-server:
     image: grumpynatasa/dl-service-registry:0.1.0
@@ -10,11 +15,13 @@ services:
       - "8761"
     networks:
       - api-gateway-net
+      - monitoring
     healthcheck:
       interval: 10s
       timeout: 60s
       retries: 8
       test: ["CMD", "curl", "-f", "http://localhost:8761"]
+    logging: *fluent-bit
 
   api-gateway:
     image: grumpynatasa/dl-api-gateway-service:0.2.0
@@ -29,8 +36,10 @@ services:
     networks:
       - api-gateway-net
       - dislinkt-fe-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
+    logging: *fluent-bit
 
   auth-service:
     image: grumpynatasa/dl-auth-service:0.3.0
@@ -48,11 +57,14 @@ services:
       - api-gateway-net
       - auth-net
       - kafka-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://auth-database:5432/AuthDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   account-service:
     image: grumpynatasa/dl-account-service:0.3.0
@@ -71,12 +83,15 @@ services:
       - auth-net
       - kafka-net
       - account-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://account-database:5432/AccountDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   post-service:
     image: grumpynatasa/dl-post-dislinkt.postservice.service:0.3.0
@@ -95,12 +110,15 @@ services:
       - auth-net
       - kafka-net
       - post-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://post-database:5432/PostDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   job-offer-service:
     image: grumpynatasa/dl-job-offer-service:0.2.0
@@ -119,12 +137,15 @@ services:
       - auth-net
       - kafka-net
       - job-offer-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://job-offer-database:5432/JobOfferDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   logging-service:
     image: grumpynatasa/dl-logging-service:0.4.0
@@ -143,11 +164,14 @@ services:
       - auth-net
       - kafka-net
       - logging-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.data.mongodb.host: "mongo"
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   messaging-service:
     image: grumpynatasa/dl-messaging-service:0.5.0
@@ -166,12 +190,15 @@ services:
       - auth-net
       - kafka-net
       - messaging-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://messaging-database:5432/MessagingDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   notification-service:
     image: grumpynatasa/dl-notification-service:0.3.0
@@ -190,12 +217,15 @@ services:
       - auth-net
       - kafka-net
       - notification-net
+      - monitoring
     environment:
       eureka.client.service-url.defaultZone: http://eureka-server:8761/eureka
       spring.datasource.url: "jdbc:postgresql://notification-database:5432/NotificationDatabase"
       spring.datasource.password: admin
       spring.kafka.bootstrap-servers: "kafka:9092"
       auth-service.address: http://api-gateway:8081/auth-service
+      opentracing.jaeger.udp-sender.host: ${JAEGER_DOMAIN}
+    logging: *fluent-bit
 
   dislinkt-fe:
     build:
@@ -214,6 +244,8 @@ services:
     networks:
       - dislinkt-fe-net
       - messaging-net
+      - monitoring
+    logging: *fluent-bit
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -224,6 +256,7 @@ services:
       - 22181:2181
     networks:
       - kafka-net
+    logging: *fluent-bit
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -245,6 +278,8 @@ services:
       retries: 15
     networks:
       - kafka-net
+      - monitoring
+    logging: *fluent-bit
 
   auth-database:
     image: postgres:latest
@@ -259,6 +294,8 @@ services:
       - "5433:5432"
     networks:
       - auth-net
+      - monitoring
+    logging: *fluent-bit
 
   account-database:
     image: postgres:latest
@@ -273,6 +310,8 @@ services:
       - "5434:5432"
     networks:
       - account-net
+      - monitoring
+    logging: *fluent-bit
 
   post-database:
     image: postgres:latest
@@ -287,6 +326,8 @@ services:
       - "5435:5432"
     networks:
       - post-net
+      - monitoring
+    logging: *fluent-bit
 
   job-offer-database:
     image: postgres:latest
@@ -301,6 +342,8 @@ services:
       - "5436:5432"
     networks:
       - job-offer-net
+      - monitoring
+    logging: *fluent-bit
 
   messaging-database:
     image: postgres:latest
@@ -316,6 +359,8 @@ services:
     networks:
       - messaging-net
       - dislinkt-fe-net
+      - monitoring
+    logging: *fluent-bit
 
   notification-database:
     image: postgres:latest
@@ -330,6 +375,8 @@ services:
       - "5438:5432"
     networks:
       - notification-net
+      - monitoring
+    logging: *fluent-bit
 
   mongo:
     image: mongo
@@ -340,6 +387,8 @@ services:
       - mongo_volume:/data/db
     networks:
       - logging-net
+      - monitoring
+    logging: *fluent-bit
 
 
 volumes:
@@ -372,3 +421,5 @@ networks:
     driver: bridge
   kafka-net:
     driver: bridge
+  monitoring:
+    external: true
